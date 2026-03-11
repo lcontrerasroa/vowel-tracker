@@ -346,18 +346,34 @@ export default function VowelTracker() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       streamRef.current = stream;
-      const ac = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      // Don't force sampleRate — let the browser use its native rate
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
       audioCtxRef.current = ac;
       const src = ac.createMediaStreamSource(stream);
-      const an = ac.createAnalyser(); an.fftSize = 2048; src.connect(an);
+      const an = ac.createAnalyser();
+      // Use larger FFT for higher native sample rates (48kHz needs more samples)
+      an.fftSize = ac.sampleRate > 20000 ? 4096 : 2048;
+      src.connect(an);
       const buf = new Float32Array(an.fftSize);
+
+      // Downsample to ~16kHz for stable LPC formant extraction
+      const targetSR = 16000;
+      const downsample = (input, srcRate) => {
+        if (srcRate <= targetSR * 1.1) return { signal: input, rate: srcRate };
+        const ratio = Math.floor(srcRate / targetSR);
+        const outLen = Math.floor(input.length / ratio);
+        const out = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) out[i] = input[i * ratio];
+        return { signal: out, rate: srcRate / ratio };
+      };
 
       const loop = () => {
         an.getFloatTimeDomainData(buf);
         let rv = 0; for (let i = 0; i < buf.length; i++) rv += buf[i] * buf[i];
         rv = Math.sqrt(rv / buf.length); setRms(rv);
         if (rv > 0.008) {
-          const fmt = extractFormants(buf, ac.sampleRate);
+          const { signal, rate } = downsample(buf, ac.sampleRate);
+          const fmt = extractFormants(signal, rate);
           if (fmt.length >= 2) {
             const f1r = fmt[0].freq, f2r = fmt[1].freq;
             if (f1r > 150 && f1r < 1000 && f2r > 500 && f2r < 3000 && f2r > f1r) {
