@@ -1,34 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// ─── Vowel reference data (F1, F2 in Hz) — "neutral" adult averages ───
+// ─── Vowel reference data (F1, F2, F3 in Hz) — "neutral" adult averages ───
 // French: Calliope (1989), Gendrot & Adda-Decker (2005)
 // English: Hillenbrand et al. (1995), Peterson & Barney (1952)
+// F3 helps disambiguate rounded/unrounded pairs and rhotics
 const VOWEL_REFS = [
-  { ipa: "i", f1: 280, f2: 2250, lang: "fr", desc: "fermée antérieure non arrondie" },
-  { ipa: "y", f1: 280, f2: 1900, lang: "fr", desc: "fermée antérieure arrondie" },
-  { ipa: "e", f1: 370, f2: 2100, lang: "fr", desc: "mi-fermée antérieure non arrondie" },
-  { ipa: "ø", f1: 370, f2: 1700, lang: "fr", desc: "mi-fermée antérieure arrondie" },
-  { ipa: "ɛ", f1: 530, f2: 1850, lang: "fr", desc: "mi-ouverte antérieure non arrondie" },
-  { ipa: "œ", f1: 530, f2: 1550, lang: "fr", desc: "mi-ouverte antérieure arrondie" },
-  { ipa: "a", f1: 750, f2: 1400, lang: "fr", desc: "ouverte antérieure non arrondie" },
-  { ipa: "ɑ", f1: 750, f2: 1100, lang: "fr", desc: "ouverte postérieure non arrondie" },
-  { ipa: "ɔ", f1: 500, f2: 900, lang: "fr", desc: "mi-ouverte postérieure arrondie" },
-  { ipa: "o", f1: 380, f2: 850, lang: "fr", desc: "mi-fermée postérieure arrondie" },
-  { ipa: "u", f1: 310, f2: 750, lang: "fr", desc: "fermée postérieure arrondie" },
-  { ipa: "ə", f1: 500, f2: 1400, lang: "fr", desc: "moyenne centrale" },
-  { ipa: "iː", f1: 270, f2: 2290, lang: "en", desc: "close front unrounded" },
-  { ipa: "ɪ", f1: 390, f2: 1990, lang: "en", desc: "near-close near-front unrounded" },
-  { ipa: "eɪ", f1: 380, f2: 2080, lang: "en", desc: "close-mid front (diphthong onset)" },
-  { ipa: "ɛ", f1: 530, f2: 1840, lang: "en", desc: "open-mid front unrounded" },
-  { ipa: "æ", f1: 660, f2: 1720, lang: "en", desc: "near-open front unrounded" },
-  { ipa: "ɑː", f1: 730, f2: 1090, lang: "en", desc: "open back unrounded" },
-  { ipa: "ɔː", f1: 570, f2: 840, lang: "en", desc: "open-mid back rounded" },
-  { ipa: "oʊ", f1: 380, f2: 940, lang: "en", desc: "close-mid back (diphthong onset)" },
-  { ipa: "ʊ", f1: 440, f2: 1020, lang: "en", desc: "near-close near-back rounded" },
-  { ipa: "uː", f1: 300, f2: 870, lang: "en", desc: "close back rounded" },
-  { ipa: "ʌ", f1: 640, f2: 1190, lang: "en", desc: "open-mid back unrounded" },
-  { ipa: "ɝ", f1: 470, f2: 1380, lang: "en", desc: "rhotacized mid central" },
-  { ipa: "ə", f1: 500, f2: 1400, lang: "en", desc: "mid central (schwa)" },
+  { ipa: "i", f1: 280, f2: 2250, f3: 3050, lang: "fr", desc: "fermée antérieure non arrondie" },
+  { ipa: "y", f1: 280, f2: 1900, f3: 2200, lang: "fr", desc: "fermée antérieure arrondie" },
+  { ipa: "e", f1: 370, f2: 2100, f3: 2900, lang: "fr", desc: "mi-fermée antérieure non arrondie" },
+  { ipa: "ø", f1: 370, f2: 1700, f3: 2350, lang: "fr", desc: "mi-fermée antérieure arrondie" },
+  { ipa: "ɛ", f1: 530, f2: 1850, f3: 2750, lang: "fr", desc: "mi-ouverte antérieure non arrondie" },
+  { ipa: "œ", f1: 530, f2: 1550, f3: 2450, lang: "fr", desc: "mi-ouverte antérieure arrondie" },
+  { ipa: "a", f1: 750, f2: 1400, f3: 2600, lang: "fr", desc: "ouverte antérieure non arrondie" },
+  { ipa: "ɑ", f1: 750, f2: 1100, f3: 2500, lang: "fr", desc: "ouverte postérieure non arrondie" },
+  { ipa: "ɔ", f1: 500, f2: 900, f3: 2550, lang: "fr", desc: "mi-ouverte postérieure arrondie" },
+  { ipa: "o", f1: 380, f2: 850, f3: 2550, lang: "fr", desc: "mi-fermée postérieure arrondie" },
+  { ipa: "u", f1: 310, f2: 750, f3: 2300, lang: "fr", desc: "fermée postérieure arrondie" },
+  { ipa: "ə", f1: 500, f2: 1400, f3: 2550, lang: "fr", desc: "moyenne centrale" },
+  { ipa: "iː", f1: 270, f2: 2290, f3: 3010, lang: "en", desc: "close front unrounded" },
+  { ipa: "ɪ", f1: 390, f2: 1990, f3: 2550, lang: "en", desc: "near-close near-front unrounded" },
+  { ipa: "eɪ", f1: 380, f2: 2080, f3: 2800, lang: "en", desc: "close-mid front (diphthong onset)" },
+  { ipa: "ɛ", f1: 530, f2: 1840, f3: 2680, lang: "en", desc: "open-mid front unrounded" },
+  { ipa: "æ", f1: 660, f2: 1720, f3: 2530, lang: "en", desc: "near-open front unrounded" },
+  { ipa: "ɑː", f1: 730, f2: 1090, f3: 2540, lang: "en", desc: "open back unrounded" },
+  { ipa: "ɔː", f1: 570, f2: 840, f3: 2540, lang: "en", desc: "open-mid back rounded" },
+  { ipa: "oʊ", f1: 380, f2: 940, f3: 2500, lang: "en", desc: "close-mid back (diphthong onset)" },
+  { ipa: "ʊ", f1: 440, f2: 1020, f3: 2360, lang: "en", desc: "near-close near-back rounded" },
+  { ipa: "uː", f1: 300, f2: 870, f3: 2240, lang: "en", desc: "close back rounded" },
+  { ipa: "ʌ", f1: 640, f2: 1190, f3: 2550, lang: "en", desc: "open-mid back unrounded" },
+  { ipa: "ɝ", f1: 470, f2: 1380, f3: 1650, lang: "en", desc: "rhotacized mid central" },
+  { ipa: "ə", f1: 500, f2: 1400, f3: 2550, lang: "en", desc: "mid central (schwa)" },
 ];
 
 // ─── Voice presets ───
@@ -48,6 +49,7 @@ function getScaledVowels(refs, preset) {
     ...v,
     f1: Math.round(v.f1 * p.f1Scale),
     f2: Math.round(v.f2 * p.f2Scale),
+    f3: Math.round(v.f3 * (p.f2Scale * 0.95 + 0.05)), // F3 scales slightly less than F2
   }));
 }
 
@@ -111,7 +113,8 @@ function extractFormants(signal, sr) {
   const pe = preEmphasis(signal), win = hammingWindow(signal.length);
   const w = new Float64Array(signal.length);
   for (let i = 0; i < signal.length; i++) w[i] = pe[i] * win[i];
-  const order = Math.min(Math.floor(sr / 1000) + 4, 16);
+  // Higher order for better F3 resolution (2 poles per formant + margin)
+  const order = Math.min(Math.max(Math.floor(sr / 1000) + 6, 12), 20);
   const r = autoCorr(w, order); if (r[0] === 0) return [];
   const { c } = levinson(r, order);
   const poly = new Float64Array(order + 1); poly[0] = 1;
@@ -121,21 +124,44 @@ function extractFormants(signal, sr) {
   for (const rt of roots) {
     if (rt.im < 0) continue;
     const mag = Math.sqrt(rt.re * rt.re + rt.im * rt.im);
-    if (mag < 0.6 || mag > 1.0) continue;
+    if (mag < 0.55 || mag > 1.0) continue;
     const freq = (Math.atan2(rt.im, rt.re) * sr) / (2 * Math.PI);
     const bw = (-sr / (2 * Math.PI)) * Math.log(mag);
-    if (freq > 90 && freq < 5000 && bw < 600) fmt.push({ freq, bw });
+    if (freq > 90 && freq < 5500 && bw < 700) fmt.push({ freq, bw });
   }
   fmt.sort((a, b) => a.freq - b.freq); return fmt;
 }
-function predictVowel(f1, f2, vowels) {
+
+// ─── Signal quality checks (not displayed, used to gate detection) ───
+function computeZCR(signal) {
+  let zc = 0;
+  for (let i = 1; i < signal.length; i++) {
+    if ((signal[i] >= 0) !== (signal[i - 1] >= 0)) zc++;
+  }
+  return zc / signal.length;
+}
+
+// ─── Enhanced prediction using F1, F2, F3 + bandwidth confidence ───
+function predictVowel(f1, f2, f3, bw1, bw2, vowels) {
   let min = Infinity, best = null;
-  const n1 = f1 / 800, n2 = f2 / 2500;
+  // Normalize each dimension to roughly unit scale
+  const n1 = f1 / 800, n2 = f2 / 2500, n3 = (f3 || 2500) / 3500;
+  // Bandwidth quality: narrower = more reliable (0 to 1 scale)
+  const bwQuality = Math.max(0, 1 - ((bw1 || 200) + (bw2 || 200)) / 800);
+
   for (const v of vowels) {
-    const d = Math.sqrt(((v.f1 / 800 - n1) * 1.2) ** 2 + (v.f2 / 2500 - n2) ** 2);
+    const vn1 = v.f1 / 800, vn2 = v.f2 / 2500, vn3 = (v.f3 || 2500) / 3500;
+    // Weighted distance: F1 strongest, F2 strong, F3 lighter
+    const d = Math.sqrt(
+      ((vn1 - n1) * 1.3) ** 2 +
+      ((vn2 - n2) * 1.0) ** 2 +
+      ((vn3 - n3) * 0.5) ** 2
+    );
     if (d < min) { min = d; best = v; }
   }
-  return { vowel: best, distance: min };
+  // Adjust confidence by bandwidth quality
+  const rawConf = Math.max(0, 1 - min * 2.5);
+  return { vowel: best, distance: min, confidence: rawConf * (0.5 + 0.5 * bwQuality) };
 }
 
 // ─── Convex hull (Graham scan in screen space) ───
@@ -204,6 +230,9 @@ export default function VowelTracker() {
   const [currentF2, setCurrentF2] = useState(null);
   const [rawF1, setRawF1] = useState(null);
   const [rawF2, setRawF2] = useState(null);
+  const [rawF3, setRawF3] = useState(null);
+  const [rawBw1, setRawBw1] = useState(null);
+  const [rawBw2, setRawBw2] = useState(null);
   const [predicted, setPredicted] = useState(null);
   const [conf, setConf] = useState(0);
   const [error, setError] = useState(null);
@@ -228,7 +257,9 @@ export default function VowelTracker() {
   const audioCtxRef = useRef(null);
   const streamRef = useRef(null);
   const animRef = useRef(null);
-  const sF1 = useRef(0), sF2 = useRef(0);
+  const sF1 = useRef(0), sF2 = useRef(0), sF3 = useRef(0);
+  const stabilityCount = useRef(0);
+  const lastPredIpa = useRef("");
 
   const W = 720, H = 540;
 
@@ -315,7 +346,7 @@ export default function VowelTracker() {
     }
 
     // Live point
-    if (f1 !== null && f2 !== null && rm > 0.008) {
+    if (f1 !== null && f2 !== null && rm > 0.005) {
       const x = xOf(f2), y = yOf(f1);
       const g = c.createRadialGradient(x, y, 0, x, y, 30);
       g.addColorStop(0, "rgba(255,80,60,0.5)"); g.addColorStop(0.5, "rgba(255,80,60,0.1)"); g.addColorStop(1, "rgba(255,80,60,0)");
@@ -400,14 +431,30 @@ export default function VowelTracker() {
 
         if (rv > 0.005) {
           const { signal, rate } = downsample(copy, ac.sampleRate);
+
+          // Voicing gate: reject noise-like signals
+          const zcr = computeZCR(signal);
+          if (zcr > 0.15) return; // Too many zero crossings → not a vowel
+
           const fmt = extractFormants(signal, rate);
           if (fmt.length >= 2) {
             const f1r = fmt[0].freq, f2r = fmt[1].freq;
+            const f3r = fmt.length >= 3 ? fmt[2].freq : null;
+            const bw1 = fmt[0].bw, bw2 = fmt[1].bw;
+
             if (f1r > 150 && f1r < 1000 && f2r > 500 && f2r < 3000 && f2r > f1r) {
+              // Reject if F1 bandwidth too wide (unreliable formant)
+              if (bw1 > 500) return;
+
               const a = 0.35;
               sF1.current = sF1.current === 0 ? f1r : sF1.current * (1 - a) + f1r * a;
               sF2.current = sF2.current === 0 ? f2r : sF2.current * (1 - a) + f2r * a;
+              if (f3r && f3r > f2r && f3r < 5000) {
+                sF3.current = sF3.current === 0 ? f3r : sF3.current * (1 - a) + f3r * a;
+              }
               setRawF1(Math.round(sF1.current)); setRawF2(Math.round(sF2.current));
+              setRawF3(sF3.current > 0 ? Math.round(sF3.current) : null);
+              setRawBw1(Math.round(bw1)); setRawBw2(Math.round(bw2));
               if (cBuf.current.collecting) cBuf.current.samples.push({ f1: sF1.current, f2: sF2.current });
             }
           }
@@ -423,20 +470,37 @@ export default function VowelTracker() {
     if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     if (audioCtxRef.current) audioCtxRef.current.close();
-    setIsRunning(false); sF1.current = 0; sF2.current = 0; setAudioDebug(""); latestBuf.current = null;
+    setIsRunning(false); sF1.current = 0; sF2.current = 0; sF3.current = 0; stabilityCount.current = 0; lastPredIpa.current = ""; setAudioDebug(""); latestBuf.current = null;
   }, []);
 
   // ─── Process formants ───
   useEffect(() => {
     if (rawF1 === null || rawF2 === null) return;
-    // Apply Lobanov if in that mode
     const { f1, f2 } = normMode === "lobanov" ? applyCal(rawF1, rawF2, cal) : { f1: rawF1, f2: rawF2 };
     const rf1 = Math.round(f1), rf2 = Math.round(f2);
     setCurrentF1(rf1); setCurrentF2(rf2);
-    const p = predictVowel(f1, f2, activeV);
-    setPredicted(p.vowel); setConf(Math.max(0, 1 - p.distance * 2.5));
-    if (rms > 0.008) setTrail(prev => [...prev, { f1: rf1, f2: rf2, t: Date.now() }].slice(-60));
-  }, [rawF1, rawF2, cal, normMode, rms, activeV]);
+
+    // Enhanced prediction with F3 and bandwidth
+    const p = predictVowel(f1, f2, rawF3, rawBw1, rawBw2, activeV);
+
+    // Stability: require same vowel for 2+ consecutive frames before updating display
+    if (p.vowel) {
+      const newIpa = p.vowel.ipa + p.vowel.lang;
+      if (newIpa === lastPredIpa.current) {
+        stabilityCount.current++;
+      } else {
+        stabilityCount.current = 1;
+        lastPredIpa.current = newIpa;
+      }
+      // Only update prediction after 2 stable frames
+      if (stabilityCount.current >= 2) {
+        setPredicted(p.vowel);
+        setConf(p.confidence);
+      }
+    }
+
+    if (rms > 0.005) setTrail(prev => [...prev, { f1: rf1, f2: rf2, t: Date.now() }].slice(-60));
+  }, [rawF1, rawF2, rawF3, rawBw1, rawBw2, cal, normMode, rms, activeV]);
 
   // Redraw
   useEffect(() => { draw(currentF1, currentF2, predicted, conf, trail, rms, activeV, normMode === "lobanov" && cal, bounds, hullShow); }, [currentF1, currentF2, predicted, conf, trail, rms, draw, activeV, cal, normMode, bounds, hullShow]);
@@ -587,23 +651,23 @@ export default function VowelTracker() {
       <div style={{ display: "flex", alignItems: "center", gap: "24px", marginBottom: "14px", minHeight: "72px" }}>
         <div style={{
           width: "72px", height: "72px", borderRadius: "16px",
-          background: predicted && rms > 0.008
+          background: predicted && rms > 0.005
             ? predicted.lang === "fr" ? "linear-gradient(135deg, rgba(60,140,255,0.2), rgba(80,180,255,0.1))" : "linear-gradient(135deg, rgba(160,100,255,0.2), rgba(180,140,255,0.1))"
             : "rgba(255,255,255,0.03)",
-          border: predicted && rms > 0.008
+          border: predicted && rms > 0.005
             ? predicted.lang === "fr" ? "2px solid rgba(100,180,255,0.4)" : "2px solid rgba(180,140,255,0.4)"
             : "2px solid rgba(255,255,255,0.06)",
           display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s ease",
         }}>
-          <span style={{ fontSize: "36px", fontFamily: "'Noto Sans', serif", color: rms > 0.008 ? "#ffe0b0" : "rgba(255,255,255,0.15)", fontWeight: 600 }}>
-            {predicted && rms > 0.008 ? predicted.ipa : "?"}
+          <span style={{ fontSize: "36px", fontFamily: "'Noto Sans', serif", color: rms > 0.005 ? "#ffe0b0" : "rgba(255,255,255,0.15)", fontWeight: 600 }}>
+            {predicted && rms > 0.005 ? predicted.ipa : "?"}
           </span>
         </div>
         <div style={{ minWidth: "160px" }}>
           <div style={{ fontSize: "12px", color: "rgba(160,190,230,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "4px" }}>
-            {rms > 0.008 ? "Voyelle détectée" : "En attente…"}
+            {rms > 0.005 ? "Voyelle détectée" : "En attente…"}
           </div>
-          {predicted && rms > 0.008 && (<>
+          {predicted && rms > 0.005 && (<>
             <div style={{ fontSize: "13px", color: "rgba(200,220,240,0.7)", marginBottom: "2px" }}>
               {predicted.desc}
               <span style={{ marginLeft: "8px", fontSize: "10px", padding: "1px 5px", borderRadius: "3px", background: predicted.lang === "fr" ? "rgba(100,180,255,0.15)" : "rgba(180,140,255,0.15)", color: predicted.lang === "fr" ? "rgba(100,180,255,0.8)" : "rgba(180,140,255,0.8)" }}>
