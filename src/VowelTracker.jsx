@@ -342,21 +342,32 @@ export default function VowelTracker() {
   }, [W, H]);
 
   // ─── Audio ───
+  const [audioDebug, setAudioDebug] = useState("");
+
   const startAudio = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      // Try ideal constraints first, fall back to basic if needed
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       streamRef.current = stream;
-      // Don't force sampleRate — let the browser use its native rate
+
       const ac = new (window.AudioContext || window.webkitAudioContext)();
+      // Force resume — required by most browsers
+      await ac.resume();
       audioCtxRef.current = ac;
+
       const src = ac.createMediaStreamSource(stream);
       const an = ac.createAnalyser();
-      // Use larger FFT for higher native sample rates (48kHz needs more samples)
       an.fftSize = ac.sampleRate > 20000 ? 4096 : 2048;
       src.connect(an);
       const buf = new Float32Array(an.fftSize);
 
-      // Downsample to ~16kHz for stable LPC formant extraction
+      setAudioDebug(`SR: ${ac.sampleRate} Hz | FFT: ${an.fftSize} | State: ${ac.state}`);
+
       const targetSR = 16000;
       const downsample = (input, srcRate) => {
         if (srcRate <= targetSR * 1.1) return { signal: input, rate: srcRate };
@@ -367,10 +378,18 @@ export default function VowelTracker() {
         return { signal: out, rate: srcRate / ratio };
       };
 
+      let frameCount = 0;
       const loop = () => {
         an.getFloatTimeDomainData(buf);
         let rv = 0; for (let i = 0; i < buf.length; i++) rv += buf[i] * buf[i];
         rv = Math.sqrt(rv / buf.length); setRms(rv);
+
+        // Debug info every 60 frames (~1s)
+        frameCount++;
+        if (frameCount % 60 === 0) {
+          setAudioDebug(`SR: ${ac.sampleRate} | State: ${ac.state} | RMS: ${rv.toFixed(4)} | Buf[0]: ${buf[0].toFixed(6)}`);
+        }
+
         if (rv > 0.008) {
           const { signal, rate } = downsample(buf, ac.sampleRate);
           const fmt = extractFormants(signal, rate);
@@ -388,14 +407,14 @@ export default function VowelTracker() {
         animRef.current = requestAnimationFrame(loop);
       };
       loop(); setIsRunning(true); setError(null);
-    } catch { setError("Impossible d'accéder au microphone. Vérifiez les permissions."); }
+    } catch (e) { setError("Erreur micro : " + e.message); }
   }, []);
 
   const stopAudio = useCallback(() => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     if (audioCtxRef.current) audioCtxRef.current.close();
-    setIsRunning(false); sF1.current = 0; sF2.current = 0;
+    setIsRunning(false); sF1.current = 0; sF2.current = 0; setAudioDebug("");
   }, []);
 
   // ─── Process formants ───
@@ -616,6 +635,8 @@ export default function VowelTracker() {
       </div>
 
       {error && <div style={{ marginTop: "14px", padding: "10px 18px", borderRadius: "8px", background: "rgba(255,60,40,0.1)", border: "1px solid rgba(255,60,40,0.25)", color: "#ff8a70", fontSize: "13px" }}>{error}</div>}
+
+      {isRunning && audioDebug && <div style={{ marginTop: "8px", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "rgba(140,170,210,0.35)", textAlign: "center" }}>{audioDebug}</div>}
 
       {/* ── Legend ── */}
       <div style={{ marginTop: "20px", display: "flex", gap: "20px", fontSize: "11px", color: "rgba(140,170,210,0.4)", justifyContent: "center" }}>
