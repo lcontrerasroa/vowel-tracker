@@ -343,10 +343,11 @@ export default function VowelTracker() {
 
   // ─── Audio ───
   const [audioDebug, setAudioDebug] = useState("");
+  const latestBuf = useRef(null);
+  const processorRef = useRef(null);
 
   const startAudio = useCallback(async () => {
     try {
-      // Try ideal constraints first, fall back to basic if needed
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
@@ -356,17 +357,18 @@ export default function VowelTracker() {
       streamRef.current = stream;
 
       const ac = new (window.AudioContext || window.webkitAudioContext)();
-      // Force resume — required by most browsers
       await ac.resume();
       audioCtxRef.current = ac;
 
       const src = ac.createMediaStreamSource(stream);
-      const an = ac.createAnalyser();
-      an.fftSize = ac.sampleRate > 20000 ? 4096 : 2048;
-      src.connect(an);
-      const buf = new Float32Array(an.fftSize);
 
-      setAudioDebug(`SR: ${ac.sampleRate} Hz | FFT: ${an.fftSize} | State: ${ac.state}`);
+      // ScriptProcessorNode: more reliable than AnalyserNode for live mic on many systems
+      const bufSize = ac.sampleRate > 20000 ? 4096 : 2048;
+      const processor = ac.createScriptProcessor(bufSize, 1, 1);
+      processorRef.current = processor;
+
+      src.connect(processor);
+      processor.connect(ac.destination); // required for onaudioprocess to fire
 
       const targetSR = 16000;
       const downsample = (input, srcRate) => {
@@ -379,19 +381,25 @@ export default function VowelTracker() {
       };
 
       let frameCount = 0;
-      const loop = () => {
-        an.getFloatTimeDomainData(buf);
-        let rv = 0; for (let i = 0; i < buf.length; i++) rv += buf[i] * buf[i];
-        rv = Math.sqrt(rv / buf.length); setRms(rv);
+      processor.onaudioprocess = (e) => {
+        const input = e.inputBuffer.getChannelData(0);
+        // Copy to a buffer we own (the input buffer gets reused)
+        const copy = new Float32Array(input.length);
+        copy.set(input);
+        latestBuf.current = copy;
 
-        // Debug info every 60 frames (~1s)
+        let rv = 0;
+        for (let i = 0; i < copy.length; i++) rv += copy[i] * copy[i];
+        rv = Math.sqrt(rv / copy.length);
+        setRms(rv);
+
         frameCount++;
-        if (frameCount % 60 === 0) {
-          setAudioDebug(`SR: ${ac.sampleRate} | State: ${ac.state} | RMS: ${rv.toFixed(4)} | Buf[0]: ${buf[0].toFixed(6)}`);
+        if (frameCount % 12 === 0) {
+          setAudioDebug(`SR: ${ac.sampleRate} | Buf: ${bufSize} | RMS: ${rv.toFixed(4)} | Peak: ${Math.max(...copy.slice(0, 100)).toFixed(4)}`);
         }
 
-        if (rv > 0.008) {
-          const { signal, rate } = downsample(buf, ac.sampleRate);
+        if (rv > 0.005) {
+          const { signal, rate } = downsample(copy, ac.sampleRate);
           const fmt = extractFormants(signal, rate);
           if (fmt.length >= 2) {
             const f1r = fmt[0].freq, f2r = fmt[1].freq;
@@ -404,17 +412,18 @@ export default function VowelTracker() {
             }
           }
         }
-        animRef.current = requestAnimationFrame(loop);
       };
-      loop(); setIsRunning(true); setError(null);
+
+      setAudioDebug(`SR: ${ac.sampleRate} Hz | Buf: ${bufSize} | Démarrage…`);
+      setIsRunning(true); setError(null);
     } catch (e) { setError("Erreur micro : " + e.message); }
   }, []);
 
   const stopAudio = useCallback(() => {
-    if (animRef.current) cancelAnimationFrame(animRef.current);
+    if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     if (audioCtxRef.current) audioCtxRef.current.close();
-    setIsRunning(false); sF1.current = 0; sF2.current = 0; setAudioDebug("");
+    setIsRunning(false); sF1.current = 0; sF2.current = 0; setAudioDebug(""); latestBuf.current = null;
   }, []);
 
   // ─── Process formants ───
